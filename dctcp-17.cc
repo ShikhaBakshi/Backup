@@ -75,23 +75,24 @@ CheckQueueSize1 (Ptr<QueueDisc> queue)
   fPlotQueue << Simulator::Now ().GetSeconds () << " " << qSize << std::endl;
   fPlotQueue.close ();
 }
-/*void
-CheckPacketSojourn (Ptr<QueueDisc> queue, uint32_t i)
+
+void
+CheckQueueSize2 (Ptr<QueueDisc> queue)
 {
-  double qSize = queue->GetPacketSojournTime ().GetMilliSeconds ();
+  uint32_t qSize = queue->GetCurrentSize ().GetValue ();
 
   // check queue size every 1/100 of a second
-  Simulator::Schedule (Seconds (0.001), &CheckPacketSojourn, queue, i);
+  Simulator::Schedule (Seconds (0.001), &CheckQueueSize2, queue);
 
-  std::ofstream fPlotQueue (filePlotPacketSojourn [i].str ().c_str (), std::ios::out | std::ios::app);
+  std::ofstream fPlotQueue (std::stringstream (dir + "queue-2.plotme").str ().c_str (), std::ios::out | std::ios::app);
   fPlotQueue << Simulator::Now ().GetSeconds () << " " << qSize << std::endl;
   fPlotQueue.close ();
-}*/
+}
 
 static void
 CwndChangeS10 (uint32_t oldCwnd, uint32_t newCwnd)
 {
-  std::ofstream fPlotQueue (dir + "cwndTraces/S11.plotme", std::ios::out | std::ios::app);
+  std::ofstream fPlotQueue (dir + "cwndTraces/S10.plotme", std::ios::out | std::ios::app);
   fPlotQueue << Simulator::Now ().GetSeconds () << " " << newCwnd/1446.0 << std::endl;
   fPlotQueue.close ();
 }
@@ -413,7 +414,7 @@ void InstallPacketSink (Ptr<Node> node, uint16_t port)
   PacketSinkHelper sink ("ns3::TcpSocketFactory",
                          InetSocketAddress (Ipv4Address::GetAny (), port));
   ApplicationContainer sinkApps = sink.Install (node);
-  sinkApps.Start (Seconds (0.0));
+  sinkApps.Start (Seconds (uv->GetValue (0, 1)));
   sinkApps.Stop (Seconds (stopTime));
 }
 
@@ -510,12 +511,8 @@ int main (int argc, char *argv[])
   pointToPointT.SetChannelAttribute ("Delay", StringValue ("0.01ms"));
 
   PointToPointHelper pointToPointT1;
-  pointToPointT.SetDeviceAttribute ("DataRate", StringValue ("1Mbps"));
-  pointToPointT.SetChannelAttribute ("Delay", StringValue ("0.01ms"));
-
-  TrafficControlHelper tchRed;
-  tchRed.SetRootQueueDisc ("ns3::RedQueueDisc", "LinkBandwidth", StringValue ("10000Mbps"),
-                           "LinkDelay", StringValue ("0.01ms"));
+  pointToPointT1.SetDeviceAttribute ("DataRate", StringValue ("10Mbps"));
+  pointToPointT1.SetChannelAttribute ("Delay", StringValue ("0.01ms"));
 
   NetDeviceContainer T1ScorpDev, T2ScorpDev, S1T1Dev, S2T1Dev, S3T2Dev, R1T2Dev, R2T2Dev;
   T1ScorpDev = pointToPointT.Install (T.Get (0), Scorp.Get (0));
@@ -607,10 +604,6 @@ int main (int argc, char *argv[])
   address.SetBase ("10.7.0.0", "255.255.255.0");
   T2Int = address.Assign (T2ScorpDev);
 
-
-
-
-
   dir += (currentTime + "/");
   std::string dirToSave = "mkdir -p " + dir;
   system (dirToSave.c_str ());
@@ -618,7 +611,7 @@ int main (int argc, char *argv[])
   system ((dirToSave + "/cwndTraces/").c_str ());
   system ((dirToSave + "/markTraces/").c_str ());
   system ((dirToSave + "/queueTraces/").c_str ());
-  system (("cp -R PlotScripts-gfc-dumbbell/* " + dir + "/pcap/").c_str ());
+  system (("cp -R PlotScripts-gfc-dctcp/* " + dir + "/pcap/").c_str ());
 
   Config::SetDefault ("ns3::TcpSocket::SndBufSize", UintegerValue (1 << 20));
   Config::SetDefault ("ns3::TcpSocket::RcvBufSize", UintegerValue (1 << 20));
@@ -660,6 +653,12 @@ int main (int argc, char *argv[])
   qd1.Get (0)->TraceConnectWithoutContext ("Drop", MakeBoundCallback (&DropAtQueue, streamWrapper));
   streamWrapper = asciiTraceHelper.CreateFileStream (dir + "/queueTraces/mark-1.plotme");
   qd1.Get (0)->TraceConnectWithoutContext ("Mark", MakeBoundCallback (&MarkAtQueue, streamWrapper));
+
+  Simulator::ScheduleNow (&CheckQueueSize2, qd1.Get (1));
+  streamWrapper = asciiTraceHelper.CreateFileStream (dir + "/queueTraces/drop-2.plotme");
+  qd1.Get (1)->TraceConnectWithoutContext ("Drop", MakeBoundCallback (&DropAtQueue, streamWrapper));
+  streamWrapper = asciiTraceHelper.CreateFileStream (dir + "/queueTraces/mark-2.plotme");
+  qd1.Get (1)->TraceConnectWithoutContext ("Mark", MakeBoundCallback (&MarkAtQueue, streamWrapper));
 
 
   uint16_t port = 50000;
